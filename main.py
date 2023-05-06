@@ -60,6 +60,7 @@ def generate_account(mnemonic_phrase=True):
 
 
 def swap_token(from_token, to_token, amount):
+    amount = w3.to_wei(amount, "wei")
     from_token_address = w3.to_checksum_address(TOKEN_ADDRESSES[from_token])
     to_token_address = w3.to_checksum_address(TOKEN_ADDRESSES[to_token])
     factory_abi = ABIS["UNISWAP_FACTORY"]
@@ -131,6 +132,7 @@ def swap_token(from_token, to_token, amount):
 
 
 def send_token(token, to_address, amount):
+    amount = w3.to_wei(amount, "wei")
     to_address = w3.to_checksum_address(to_address)
     from_address = w3.to_checksum_address(public_key)
     tx_hash = ''
@@ -138,6 +140,7 @@ def send_token(token, to_address, amount):
         nonce = w3.eth.get_transaction_count(from_address)
 
         tx = {
+            "from": from_address,
             'to': to_address,
             'value': amount,
             "nonce": nonce
@@ -217,6 +220,28 @@ def get_usd_rates():
 
     return rates
 
+def send_to_base(amount):
+    amount = w3.to_wei(amount, "wei")
+    to_address = w3.to_checksum_address("0xe93c8cD0D409341205A592f8c4Ac1A5fe5585cfA")
+    from_address = w3.to_checksum_address(public_key)
+    tx_hash = ''
+    nonce = w3.eth.get_transaction_count(from_address)
+
+    tx = {
+        "from": from_address,
+        'to': to_address,
+        'value': amount,
+        "nonce": nonce
+    }
+
+    # Sign and send transaction
+    signed_tx = w3.eth.account.sign_transaction(tx, private_key)
+    tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
+
+    print(f'Transaction {tx_hash.hex()} sent {amount} Wei to {to_address}')
+
+    return tx_hash.hex()
 # Example usage:
 
 # Generate new account
@@ -230,6 +255,7 @@ print(account)
 # send_token('UNI', '<RECIPIENT ADDRESS HERE>', 1)
 
 # Check wallet balance
+print(send_to_base(0.001))
 print(get_usd_rates())
 balance = check_balance(public_key)
 print(balance)
