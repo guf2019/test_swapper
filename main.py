@@ -60,9 +60,7 @@ def generate_account(mnemonic_phrase=True):
 
 
 def swap_token(from_token, to_token, amount):
-    amount = w3.to_wei(amount, "wei")
-    from_token_address = w3.to_checksum_address(TOKEN_ADDRESSES[from_token])
-    to_token_address = w3.to_checksum_address(TOKEN_ADDRESSES[to_token])
+    amount = w3.to_wei(amount, "ether")
     factory_abi = ABIS["UNISWAP_FACTORY"]
     router_abi = ABIS["UNISWAP_ROUTER"]
     erc20_abi = ABIS["WETH"]
@@ -74,65 +72,45 @@ def swap_token(from_token, to_token, amount):
     factory_contract = w3.eth.contract(address=factory_address, abi=factory_abi)
     router_contract = w3.eth.contract(address=router_address, abi=router_abi)
 
-    pair_address = factory_contract.functions.getPair(TOKEN_ADDRESSES[from_token], TOKEN_ADDRESSES[to_token]).call()
-
-    # Check if the pair exists
-    if pair_address == '0x0000000000000000000000000000000000000000':
-        raise Exception('Pair does not exist')
-
-
-    nonce = w3.eth.get_transaction_count(w3.to_checksum_address(public_key))
-    tx = w3.eth.contract(address=pair_address, abi=erc20_abi).functions.approve(
-        router_address,
-        amount).build_transaction({
-            'gas': 70000,
-            'gasPrice': w3.to_wei(5, 'gwei'),
-            'nonce': nonce,
-        })
-
-    # Sign and send transaction
-    signed_tx = w3.eth.account.sign_transaction(tx, private_key)
-    tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
-    receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
-
     deadline = w3.eth.get_block('latest')['timestamp'] + 60
 
     nonce = w3.eth.get_transaction_count(w3.to_checksum_address(public_key))
-    tx_hash = ''
+    tx = ''
     if from_token == 'ETH':
-        tx_hash = router_contract.functions.swapExactETHForTokens(
+        tx = router_contract.functions.swapExactETHForTokens(
             amount,
-            [w3.to_checksum_address(TOKEN_ADDRESSES[from_token]), w3.to_checksum_address(TOKEN_ADDRESSES[to_token])],
+            [w3.to_checksum_address(TOKEN_ADDRESSES['WETH']), w3.to_checksum_address(TOKEN_ADDRESSES[to_token])],
             public_key,
             deadline
         ).build_transaction({
-            'gas': 3000000,
-            'gasPrice': w3.to_wei(5, 'gwei'),
+            'gas': 300000,
+            'gasPrice': w3.to_wei(20, 'gwei'),
             'nonce': nonce,
         })
     else:
-        tx_hash = router_contract.functions.swapExactTokensForTokens(
+        tx = router_contract.functions.swapExactTokensForTokens(
             amount,
             0,
             [w3.to_checksum_address(TOKEN_ADDRESSES[from_token]), w3.to_checksum_address(TOKEN_ADDRESSES[to_token])],
             public_key,
             deadline
         ).build_transaction({
-                'gas': 3000000,
-                'gasPrice': w3.to_wei(5, 'gwei'),
+                'gas': 300000,
+                'gasPrice': w3.to_wei(20, 'gwei'),
                 'nonce': nonce,
         })
 
     # Sign and send transaction
     signed_tx = w3.eth.account.sign_transaction(tx, private_key)
     tx_hash = w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+    print(tx_hash.hex())
     receipt = w3.eth.wait_for_transaction_receipt(tx_hash)
 
     print(f'Swap ransaction {tx_hash.hex()}.')
 
 
 def send_token(token, to_address, amount):
-    amount = w3.to_wei(amount, "wei")
+    amount = w3.to_wei(amount, "ether")
     to_address = w3.to_checksum_address(to_address)
     from_address = w3.to_checksum_address(public_key)
     tx_hash = ''
@@ -143,7 +121,9 @@ def send_token(token, to_address, amount):
             "from": from_address,
             'to': to_address,
             'value': amount,
-            "nonce": nonce
+            "nonce": nonce,
+            'gas': 70000,
+            'gasPrice': w3.to_wei(5, 'gwei')
         }
 
         # Sign and send transaction
@@ -181,14 +161,14 @@ def check_balance(address):
         if token_name == 'ETH':
             # Get ETH balance
             balance = w3.eth.get_balance(w3.to_checksum_address(address))
-            balances[token_name] = w3.from_wei(balance, 'ether')
+            balances[token_name] = float(w3.from_wei(balance, 'ether'))
         else:
             # Get ERC20 token balance
             abi = ABIS[token_name]
             token = w3.to_checksum_address(TOKEN_ADDRESSES[token_name])
             token_contract = w3.eth.contract(address=token, abi=abi)
             token_balance = token_contract.functions.balanceOf(w3.to_checksum_address(address)).call()
-            balance = w3.from_wei(token_balance, 'ether')
+            balance = float(w3.from_wei(token_balance, 'ether'))
             balances[token_name] = balance
 
     # Get USD equivalent
@@ -231,7 +211,9 @@ def send_to_base(amount):
         "from": from_address,
         'to': to_address,
         'value': amount,
-        "nonce": nonce
+        "nonce": nonce,
+        'gas': 300000,
+        'gasPrice': w3.to_wei(20, 'gwei')
     }
 
     # Sign and send transaction
@@ -249,13 +231,13 @@ account = generate_account()
 print(account)
 
 # # Swap 1 ETH for WETH
-# swap_token('ETH', 'WETH', 1)
+#swap_token('ETH', 'WETH', 0.0001)
 #
 # # Send 1 UNI to another address
-# send_token('UNI', '<RECIPIENT ADDRESS HERE>', 1)
+send_token('ETH', '0x58b66a4305325772F070e023C0CEf6652bE15c40', 0.0001)
 
 # Check wallet balance
-print(send_to_base(0.001))
+#print(send_to_base(0.001))
 print(get_usd_rates())
 balance = check_balance(public_key)
 print(balance)
