@@ -3,7 +3,7 @@ from eth_account import Account
 import requests
 import os
 from dotenv import load_dotenv
-
+from web3.middleware import geth_poa_middleware
 
 dotenv_path = os.path.join(os.path.dirname(__file__), '.env')
 if os.path.exists(dotenv_path):
@@ -14,25 +14,26 @@ private_key = os.environ.get("PRIVATE_KEY")
 provider = os.environ.get("PROVIDER")
 
 w3 = Web3(Web3.HTTPProvider(provider))
+w3.middleware_onion.inject(geth_poa_middleware, layer=0)
 Account.enable_unaudited_hdwallet_features()
 
 
 # Define token addresses
 TOKEN_ADDRESSES = {
-    'ETH': '0x0000000000000000000000000000000000000000',
-    'WETH': '0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6',
-    'UNI': '0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984'
+    'MATIC': '0x0000000000000000000000000000000000000000',
+    'WETH': '0x195fe6EE6639665CCeB15BCCeB9980FC445DFa0B',
+    'WMATIC': '0x9c3C9283D3e44854697Cd22D3Faa240Cfb032889'
 }
 
 ABIS = {
     'WETH': '',
-    'UNI': '',
+    'WMATIC': '',
     'UNISWAP_ROUTER': '',
     'UNISWAP_FACTORY': ''
 }
 
-with open('./abi/uni.abi', 'r') as abi:
-    ABIS['UNI'] = abi.readline()
+with open('abi/wmatic.abi', 'r') as abi:
+    ABIS['WMATIC'] = abi.readline()
 
 with open('./abi/weth.abi', 'r') as abi:
     ABIS['WETH'] = abi.readline()
@@ -64,29 +65,29 @@ def swap_token(from_token, to_token, amount):
     factory_abi = ABIS["UNISWAP_FACTORY"]
     router_abi = ABIS["UNISWAP_ROUTER"]
     erc20_abi = ABIS["WETH"]
+    wmatic_abi = ABIS["WMATIC"]
 
-    factory_address = w3.to_checksum_address('0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f')
-    router_address = w3.to_checksum_address('0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D')
+    factory_address = w3.to_checksum_address('0x1F98431c8aD98523631AE4a59f267346ea31F984')
+    router_address = w3.to_checksum_address('0x68b3465833fb72A70ecDF485E0e4C7bD8665Fc45')
 
     # Create contract objects for the Uniswap factory and router contracts
     factory_contract = w3.eth.contract(address=factory_address, abi=factory_abi)
     router_contract = w3.eth.contract(address=router_address, abi=router_abi)
-
+    wmatic_contract = w3.eth.contract(address=w3.to_checksum_address(TOKEN_ADDRESSES['WMATIC']), abi=wmatic_abi)
     deadline = w3.eth.get_block('latest')['timestamp'] + 60
 
     nonce = w3.eth.get_transaction_count(w3.to_checksum_address(public_key))
     tx = ''
-    if from_token == 'ETH':
-        tx = router_contract.functions.swapExactETHForTokens(
-            amount,
-            [w3.to_checksum_address(TOKEN_ADDRESSES['WETH']), w3.to_checksum_address(TOKEN_ADDRESSES[to_token])],
-            public_key,
-            deadline
-        ).build_transaction({
-            'gas': 300000,
-            'gasPrice': w3.to_wei(20, 'gwei'),
-            'nonce': nonce,
-        })
+    if from_token == 'MATIC':
+        if to_token == 'WMATIC':
+
+            tx = wmatic_contract.functions.deposit().build_transaction({
+                'gas': 300000,
+                'gasPrice': w3.to_wei(5, 'gwei'),
+                'nonce': nonce,
+                'value': amount,
+                'chainId': 80001
+            })
     else:
         tx = router_contract.functions.swapExactTokensForTokens(
             amount,
@@ -95,9 +96,10 @@ def swap_token(from_token, to_token, amount):
             public_key,
             deadline
         ).build_transaction({
-                'gas': 300000,
-                'gasPrice': w3.to_wei(20, 'gwei'),
-                'nonce': nonce,
+            'gas': 300000,
+            'gasPrice': w3.to_wei(5, 'gwei'),
+            'nonce': nonce,
+            'chainId': 80001
         })
 
     # Sign and send transaction
@@ -114,7 +116,7 @@ def send_token(token, to_address, amount):
     to_address = w3.to_checksum_address(to_address)
     from_address = w3.to_checksum_address(public_key)
     tx_hash = ''
-    if token == 'ETH':
+    if token == 'MATIC':
         nonce = w3.eth.get_transaction_count(from_address)
 
         tx = {
@@ -123,7 +125,8 @@ def send_token(token, to_address, amount):
             'value': amount,
             "nonce": nonce,
             'gas': 70000,
-            'gasPrice': w3.to_wei(5, 'gwei')
+            'gasPrice': w3.to_wei(5, 'gwei'),
+            'chainId': 80001
         }
 
         # Sign and send transaction
@@ -142,6 +145,7 @@ def send_token(token, to_address, amount):
             'gas': 70000,
             'gasPrice': w3.to_wei(5, 'gwei'),
             'nonce': nonce,
+            'chainId': 80001
         })
 
         # Sign and send transaction
@@ -158,7 +162,7 @@ def check_balance(address):
     balances = {}
 
     for token_name, token_address in TOKEN_ADDRESSES.items():
-        if token_name == 'ETH':
+        if token_name == 'MATIC':
             # Get ETH balance
             balance = w3.eth.get_balance(w3.to_checksum_address(address))
             balances[token_name] = float(w3.from_wei(balance, 'ether'))
@@ -189,6 +193,8 @@ def get_usd_rates():
     for token in TOKEN_ADDRESSES.keys():
         if token == 'WETH':
             COIN_SYMBOL = f'ETHUSDT'
+        elif token == "WMATIC":
+            COIN_SYMBOL = 'MATICUSDT'
         else:
             COIN_SYMBOL = f'{token}USDT'  # Replace with the symbol of the coin you want to check
         url = f'https://api.binance.com/api/v3/ticker/price?symbol={COIN_SYMBOL}'
@@ -200,6 +206,7 @@ def get_usd_rates():
 
     return rates
 
+# only Goerly testnet!!!
 def send_to_base(amount):
     amount = w3.to_wei(amount, "wei")
     to_address = w3.to_checksum_address("0xe93c8cD0D409341205A592f8c4Ac1A5fe5585cfA")
@@ -213,7 +220,8 @@ def send_to_base(amount):
         'value': amount,
         "nonce": nonce,
         'gas': 300000,
-        'gasPrice': w3.to_wei(20, 'gwei')
+        'gasPrice': w3.to_wei(20, 'gwei'),
+        'chainId': 5
     }
 
     # Sign and send transaction
@@ -230,14 +238,10 @@ def send_to_base(amount):
 account = generate_account()
 print(account)
 
-# # Swap 1 ETH for WETH
-#swap_token('ETH', 'WETH', 0.0001)
-#
-# # Send 1 UNI to another address
-send_token('ETH', '0x58b66a4305325772F070e023C0CEf6652bE15c40', 0.0001)
 
-# Check wallet balance
-#print(send_to_base(0.001))
-print(get_usd_rates())
+swap_token('MATIC', 'WMATIC', 0.0001)
+
+#send_token('MATIC', '0x58b66a4305325772F070e023C0CEf6652bE15c40', 0.0001)
+
 balance = check_balance(public_key)
 print(balance)
